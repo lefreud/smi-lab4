@@ -46,7 +46,11 @@ SOFTWARE.
 */
 int main(void)
 {
-	initEEPROM();
+  unsigned char buffer[10] = {0};
+  initEEPROM();
+  LireMemoireEEPROM(0x0000, 4, buffer);
+  EcrireMemoireEEPROM(0, 0, 0);
+  LireMemoireEEPROM(0x0000, 4, buffer);
   int i = 0;
 
   /**
