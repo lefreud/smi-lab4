@@ -14,6 +14,8 @@
 
 #define SPI_ALTERNATE_FUNCTION 0x5
 #define GPIO_ALTERNATE_FUNCTION 0b10
+#define EEPROM_DELAY_TICKS 1000 // at least 50 ns
+#define SS_PIN BIT1
 
 static void EcrirePageEEPROM(unsigned int AdresseEEPROM, unsigned int NbreOctets, unsigned char *Source);
 static unsigned int ReadStatusRegister();
@@ -26,43 +28,53 @@ void initEEPROM()
 	 */
 
 	// clocks
-	RCC->AHB1ENR |= BIT0; // Enable port A
-	RCC->APB2ENR |= BIT12; // Enable SPI1 clock
+	RCC->AHB1ENR |= BIT0 | BIT1; // Enable port A, B
+	RCC->APB1ENR |= BIT14; // Enable SPI2 clock
 
+	// GPIO output for slave select on PA1
+	GPIOA->MODER |= BIT2;
 
 	// SPI-specific config
-	SPI1->CR2 |= BIT2; // SS output enabled
-	SPI1->CR1 |= BIT2; // Master mode
-	SPI1->CR1 |= 0b000 << 3; // Baud rate control (f_PCLK/2) TODO: find optimal baud rate
-	SPI1->CR1 |= BIT9; // software slave select management
-	//SPI1->CR1 |= BIT15; // bidimode
-	//SPI1->CR1 |= BIT14; // bidioe
+
+	SPI2->CR2 |= BIT2; // SS output enabled
+	SPI2->CR1 |= BIT2 // Master mode
+	          | 0b111 << 3 // Baud rate control (f_PCLK/2) TODO: find optimal baud rate
+			  // | BIT15 // bidimode
+	          ;//| BIT9; // software slave select management
+	// SPI2->CR1 |= BIT14; // bidioe
+
 
 	NVIC->ISER[1] |= BIT3; // SPI global interrupt (bit 35)
 
-	SPI1->CR1 |= BIT6; // SPI enabled
+	/*
+	 * Set PB12, PB13, PB14, PB15 to alternate function
+	 */
 
-	// Set alternate GPIO function for pins 4,5,6,7 to SPI
-	GPIOA->OSPEEDR |= BIT9 | BIT11 | BIT13 | BIT15;
+	GPIOB->OSPEEDR |= BIT25 | BIT27 | BIT29 | BIT31;
 
-	GPIOA->MODER |= GPIO_ALTERNATE_FUNCTION << 8 |
-					GPIO_ALTERNATE_FUNCTION << 10 |
-					GPIO_ALTERNATE_FUNCTION << 12 |
-					GPIO_ALTERNATE_FUNCTION << 14;
+	// Mode alternate function
+	GPIOB->MODER |= GPIO_ALTERNATE_FUNCTION << 24 |
+					GPIO_ALTERNATE_FUNCTION << 26 |
+					GPIO_ALTERNATE_FUNCTION << 28 |
+					GPIO_ALTERNATE_FUNCTION << 30;
 
-	GPIOA->AFR[0] |= SPI_ALTERNATE_FUNCTION << 16 |
-			SPI_ALTERNATE_FUNCTION << 20 |
-			SPI_ALTERNATE_FUNCTION << 24 |
-			SPI_ALTERNATE_FUNCTION << 28;
+	GPIOB->AFR[1] |= SPI_ALTERNATE_FUNCTION << 16 |
+					SPI_ALTERNATE_FUNCTION << 20 |
+					SPI_ALTERNATE_FUNCTION << 24 |
+					SPI_ALTERNATE_FUNCTION << 28;
 
 	/*
 	 * Start SPI master
 	 */
 
 	// Slave select disabled
-	SPI1->CR1 &= ~SSI_FLAG;
-	SPI1->CR1 |= SSI_FLAG;
-	for (volatile int i = 0; i < 1000000; i++); // at least 50 ns
+	GPIOA->ODR |= SS_PIN;
+
+	// TODO
+	while (1) {
+		ReadStatusRegister();
+		for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
+	}
 }
 
 char LireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, unsigned char *Destination)
@@ -71,29 +83,33 @@ char LireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, uns
 	while (IsWriteInProgress());
 
 	for (unsigned int i = 0; i < NbreOctets; i++) {
-		SPI1->CR1 &= ~SSI_FLAG;
+		GPIOA->ODR &= ~SS_PIN;
 
 		// send READ instruction
-		while ((SPI1->SR & TXE_FLAG) == 0);
-		SPI1->DR = 0b00000011;
+		while ((SPI2->SR & TXE_FLAG) == 0);
+		SPI2->DR = 0b00000011;
 
 		// send 8 MSB address bits
-		while ((SPI1->SR & TXE_FLAG) == 0);
-		SPI1->DR = (AdresseEEPROM + i) & 0xFF00;
+		while ((SPI2->SR & TXE_FLAG) == 0);
+		SPI2->DR = (AdresseEEPROM + i) & 0xFF00;
 
 		// send 8 LSB address bits
-		while ((SPI1->SR & TXE_FLAG) == 0);
-		SPI1->DR = (AdresseEEPROM + i) & 0xFF;
+		while ((SPI2->SR & TXE_FLAG) == 0);
+		SPI2->DR = (AdresseEEPROM + i) & 0xFF;
+
+		// TODO
+		for (volatile int i = 0; i < 1000; i++);
 
 		// read data
-		while ((SPI1->SR & RXNE_FLAG) == 0);
-		Destination[i] = SPI1->DR;
+		while ((SPI2->SR & RXNE_FLAG) == 0);
+		volatile unsigned int a = SPI2->DR;
+		Destination[i] = SPI2->DR;
 
-		while ((SPI1->SR & BSY_FLAG) != 0);
+		while ((SPI2->SR & BSY_FLAG) != 0);
 
 		// Slave select disabled
-		SPI1->CR1 |= SSI_FLAG;
-		for (volatile int i = 0; i < 1000000; i++); // at least 50 ns
+		GPIOA->ODR |= SS_PIN;
+		for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
 	}
 
 
@@ -129,75 +145,85 @@ static void EcrirePageEEPROM(unsigned int AdresseEEPROM, unsigned int NbreOctets
 	 * WRITE ENABLE
 	 */
 
-	SPI1->CR1 &= ~SSI_FLAG;
+	GPIOA->ODR &= ~SS_PIN;
 
-	while ((SPI1->SR & TXE_FLAG) == 0);
-	SPI1->DR = 0b00000110;
-	while ((SPI1->SR & BSY_FLAG) != 0);
+	while ((SPI2->SR & TXE_FLAG) == 0);
+	SPI2->DR = 0b00000110;
+	while ((SPI2->SR & BSY_FLAG) != 0);
 
-	SPI1->CR1 |= SSI_FLAG;
-	for (volatile int i = 0; i < 1000000; i++); // at least 50 ns
+	GPIOA->ODR |= SS_PIN;
+	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
 
 	/*
 	 * START TX
 	 */
 
-	SPI1->CR1 &= ~SSI_FLAG;
+	GPIOA->ODR &= ~SS_PIN;
 
 	// send WRITE instruction
-	while ((SPI1->SR & TXE_FLAG) == 0);
-	SPI1->DR = 0b00000010;
+	while ((SPI2->SR & TXE_FLAG) == 0);
+	SPI2->DR = 0b00000010;
 
 	// send 8 MSB address bits
-	while ((SPI1->SR & TXE_FLAG) == 0);
-	SPI1->DR = AdresseEEPROM & 0xFF00;
+	while ((SPI2->SR & TXE_FLAG) == 0);
+	SPI2->DR = AdresseEEPROM & 0xFF00;
 
 	// send 8 LSB address bits
-	while ((SPI1->SR & TXE_FLAG) == 0);
-	SPI1->DR = AdresseEEPROM & 0xFF;
+	while ((SPI2->SR & TXE_FLAG) == 0);
+	SPI2->DR = AdresseEEPROM & 0xFF;
 
 	// send data
 	for (int i = 0; i < NbreOctets; i++) {
-		while ((SPI1->SR & TXE_FLAG) == 0);
-		SPI1->DR = Source[i];
+		while ((SPI2->SR & TXE_FLAG) == 0);
+		SPI2->DR = Source[i];
 	}
-	while ((SPI1->SR & BSY_FLAG) != 0);
-	SPI1->CR1 |= SSI_FLAG;
-	for (volatile int i = 0; i < 1000000; i++); // at least 50 ns
+	while ((SPI2->SR & BSY_FLAG) != 0);
+	GPIOA->ODR |= SS_PIN;
+	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
 
 	/*
 	 * WRITE DISABLE
 	 */
 
-	SPI1->CR1 &= ~SSI_FLAG;
+	GPIOA->ODR &= ~SS_PIN;
 
-	while ((SPI1->SR & TXE_FLAG) == 0);
-	SPI1->DR = 0b00000100;
-	while ((SPI1->SR & BSY_FLAG) != 0);
+	while ((SPI2->SR & TXE_FLAG) == 0);
+	SPI2->DR = 0b00000100;
+	while ((SPI2->SR & BSY_FLAG) != 0);
 
 	// Slave select disabled
-	SPI1->CR1 |= SSI_FLAG;
-	for (volatile int i = 0; i < 1000000; i++); // at least 50 ns
+	GPIOA->ODR |= SS_PIN;
+	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
 }
 
 static unsigned int ReadStatusRegister()
 {
-	SPI1->CR1 &= ~SSI_FLAG;
-	while (!(SPI1->SR & TXE_FLAG)) {}
-	SPI1->DR = 0b00000101;
+	SPI2->CR1 |= BIT6; // SPI enabled
+	GPIOA->ODR &= ~SS_PIN;
+	while (!(SPI2->SR & TXE_FLAG)) {}
+	SPI2->DR = 0b00000101;
+	while ((SPI2->SR & BSY_FLAG)) {}
+	while (!(SPI2->SR & TXE_FLAG)) {}
+	while (!(SPI2->SR & RXNE_FLAG)) {}
+	SPI2->DR = 0xFF;
 
-	while (!(SPI1->SR & RXNE_FLAG)) {}
-	unsigned int statusRegisterValue = SPI1->DR;
+	while ((SPI2->SR & BSY_FLAG)) {}
+	while (!(SPI2->SR & TXE_FLAG)) {}
+	while (!(SPI2->SR & RXNE_FLAG)) {}
+	unsigned int statusRegisterValue = SPI2->DR;
 
-	// Slave select disabled
-	SPI1->CR1 |= SSI_FLAG;
-	for (volatile int i = 0; i < 1000000; i++); // at least 50 ns
+	while ((SPI2->SR & BSY_FLAG)) {}
+
+
+	SPI2->CR1 &= ~BIT6; // SPI disabled
+	GPIOA->ODR |= SS_PIN;
+	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
 
 	return statusRegisterValue;
 }
 
 static int IsWriteInProgress()
 {
-	return ReadStatusRegister() & 1;
+	return ReadStatusRegister() & BIT0;
 }
 
