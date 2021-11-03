@@ -20,6 +20,10 @@
 static void EcrirePageEEPROM(unsigned int AdresseEEPROM, unsigned int NbreOctets, unsigned char *Source);
 static unsigned int ReadStatusRegister();
 static int IsWriteInProgress();
+static void startSPIcommunication();
+static void endSPIcommunication();
+static int transmitWord(unsigned int byte);
+static unsigned int receiveWord();
 
 void initEEPROM()
 {
@@ -198,26 +202,13 @@ static void EcrirePageEEPROM(unsigned int AdresseEEPROM, unsigned int NbreOctets
 
 static unsigned int ReadStatusRegister()
 {
-	SPI2->CR1 |= BIT6; // SPI enabled
-	GPIOA->ODR &= ~SS_PIN;
-	while (!(SPI2->SR & TXE_FLAG)) {}
-	SPI2->DR = 0b00000101;
-	while ((SPI2->SR & BSY_FLAG)) {}
-	while (!(SPI2->SR & TXE_FLAG)) {}
-	while (!(SPI2->SR & RXNE_FLAG)) {}
-	SPI2->DR = 0xFF;
+	startSPIcommunication();
+	transmitWord(0b00000101);
+	transmitWord(0xFF);
 
-	while ((SPI2->SR & BSY_FLAG)) {}
-	while (!(SPI2->SR & TXE_FLAG)) {}
-	while (!(SPI2->SR & RXNE_FLAG)) {}
-	unsigned int statusRegisterValue = SPI2->DR;
+	unsigned int statusRegisterValue = receiveWord();
 
-	while ((SPI2->SR & BSY_FLAG)) {}
-
-
-	SPI2->CR1 &= ~BIT6; // SPI disabled
-	GPIOA->ODR |= SS_PIN;
-	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
+	endSPIcommunication();
 
 	return statusRegisterValue;
 }
@@ -227,3 +218,31 @@ static int IsWriteInProgress()
 	return ReadStatusRegister() & BIT0;
 }
 
+inline static int transmitWord(unsigned int byte)
+{
+	while (!(SPI2->SR & TXE_FLAG)) {}
+	SPI2->DR = 0xFF & byte;
+	while (!(SPI2->SR & TXE_FLAG)) {}
+	while (!(SPI2->SR & RXNE_FLAG)) {}
+}
+
+inline static void startSPIcommunication()
+{
+	SPI2->CR1 |= BIT6; // SPI enabled
+	GPIOA->ODR &= ~SS_PIN;
+}
+
+inline static void endSPIcommunication()
+{
+	while ((SPI2->SR & BSY_FLAG)) {}
+
+	SPI2->CR1 &= ~BIT6; // SPI disabled
+	GPIOA->ODR |= SS_PIN;
+
+	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
+}
+
+inline static unsigned int receiveWord()
+{
+	return SPI2->DR;
+}
