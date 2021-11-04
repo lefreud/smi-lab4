@@ -75,10 +75,26 @@ void initEEPROM()
 	GPIOA->ODR |= SS_PIN;
 
 	// TODO
+	//return;
+	/*volatile unsigned int a, b;
 	while (1) {
-		ReadStatusRegister();
+		a = ReadStatusRegister();
+
+		// WREN
+		startSPIcommunication();
+		transmitWord(0b00000100);
+		endSPIcommunication();
+
+		// b = ReadStatusRegister();
+
+		// WRDI
+		/*startSPIcommunication();
+		// transmitWord(0b00000100);
+		endSPIcommunication();*/
+/*
 		for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
 	}
+*/
 }
 
 char LireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, unsigned char *Destination)
@@ -87,33 +103,40 @@ char LireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, uns
 	while (IsWriteInProgress());
 
 	for (unsigned int i = 0; i < NbreOctets; i++) {
-		GPIOA->ODR &= ~SS_PIN;
+		// GPIOA->ODR &= ~SS_PIN;
+		startSPIcommunication();
 
 		// send READ instruction
-		while ((SPI2->SR & TXE_FLAG) == 0);
-		SPI2->DR = 0b00000011;
+		/*while ((SPI2->SR & TXE_FLAG) == 0);
+		SPI2->DR = 0b00000011;*/
+		transmitWord(0b00000011);
 
 		// send 8 MSB address bits
-		while ((SPI2->SR & TXE_FLAG) == 0);
-		SPI2->DR = (AdresseEEPROM + i) & 0xFF00;
+		/*while ((SPI2->SR & TXE_FLAG) == 0);
+		SPI2->DR = (AdresseEEPROM + i) & 0xFF00;*/
+		transmitWord((AdresseEEPROM + i) & 0xFF00);
 
 		// send 8 LSB address bits
-		while ((SPI2->SR & TXE_FLAG) == 0);
-		SPI2->DR = (AdresseEEPROM + i) & 0xFF;
+		/*while ((SPI2->SR & TXE_FLAG) == 0);
+		SPI2->DR = (AdresseEEPROM + i) & 0xFF;*/
+		transmitWord((AdresseEEPROM + i) & 0xFF);
 
+		transmitWord(0xFF);
 		// TODO
-		for (volatile int i = 0; i < 1000; i++);
+		// for (volatile int i = 0; i < 1000; i++);
 
 		// read data
-		while ((SPI2->SR & RXNE_FLAG) == 0);
-		volatile unsigned int a = SPI2->DR;
-		Destination[i] = SPI2->DR;
+		// while ((SPI2->SR & RXNE_FLAG) == 0);
+		// volatile unsigned int a = SPI2->DR;
+		volatile unsigned int x = receiveWord();
+		Destination[i] = receiveWord();
 
-		while ((SPI2->SR & BSY_FLAG) != 0);
+		// while ((SPI2->SR & BSY_FLAG) != 0);
+		endSPIcommunication();
 
 		// Slave select disabled
-		GPIOA->ODR |= SS_PIN;
-		for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
+		//GPIOA->ODR |= SS_PIN;
+		// for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
 	}
 
 
@@ -149,55 +172,71 @@ static void EcrirePageEEPROM(unsigned int AdresseEEPROM, unsigned int NbreOctets
 	 * WRITE ENABLE
 	 */
 
-	GPIOA->ODR &= ~SS_PIN;
+	// GPIOA->ODR &= ~SS_PIN;
+	startSPIcommunication();
 
-	while ((SPI2->SR & TXE_FLAG) == 0);
+	/* while ((SPI2->SR & TXE_FLAG) == 0);
 	SPI2->DR = 0b00000110;
-	while ((SPI2->SR & BSY_FLAG) != 0);
+	while ((SPI2->SR & BSY_FLAG) != 0);*/
+	transmitWord(0b00000110);
 
-	GPIOA->ODR |= SS_PIN;
-	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
+	endSPIcommunication();
+
+	//GPIOA->ODR |= SS_PIN;
+	// for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
 
 	/*
 	 * START TX
 	 */
 
-	GPIOA->ODR &= ~SS_PIN;
+	startSPIcommunication();
+	//GPIOA->ODR &= ~SS_PIN;
 
 	// send WRITE instruction
-	while ((SPI2->SR & TXE_FLAG) == 0);
-	SPI2->DR = 0b00000010;
+	/*while ((SPI2->SR & TXE_FLAG) == 0);
+	SPI2->DR = 0b00000010;*/
+	transmitWord(0b00000010);
 
 	// send 8 MSB address bits
-	while ((SPI2->SR & TXE_FLAG) == 0);
-	SPI2->DR = AdresseEEPROM & 0xFF00;
+	// while ((SPI2->SR & TXE_FLAG) == 0);
+	// SPI2->DR = AdresseEEPROM & 0xFF00;
+	transmitWord(AdresseEEPROM & 0xFF00);
 
 	// send 8 LSB address bits
-	while ((SPI2->SR & TXE_FLAG) == 0);
-	SPI2->DR = AdresseEEPROM & 0xFF;
+	/*while ((SPI2->SR & TXE_FLAG) == 0);
+	SPI2->DR = AdresseEEPROM & 0xFF;*/
+	transmitWord(AdresseEEPROM & 0xFF);
 
 	// send data
 	for (int i = 0; i < NbreOctets; i++) {
-		while ((SPI2->SR & TXE_FLAG) == 0);
-		SPI2->DR = Source[i];
+		// while ((SPI2->SR & TXE_FLAG) == 0);
+		// SPI2->DR = Source[i];
+		// transmitWord(Source[i]);
+		transmitWord(0x68);
 	}
+
+	/*
 	while ((SPI2->SR & BSY_FLAG) != 0);
 	GPIOA->ODR |= SS_PIN;
-	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
+	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns*/
+	endSPIcommunication();
 
 	/*
 	 * WRITE DISABLE
 	 */
 
-	GPIOA->ODR &= ~SS_PIN;
+	// GPIOA->ODR &= ~SS_PIN;
+	startSPIcommunication();
 
-	while ((SPI2->SR & TXE_FLAG) == 0);
+	/*while ((SPI2->SR & TXE_FLAG) == 0);
 	SPI2->DR = 0b00000100;
-	while ((SPI2->SR & BSY_FLAG) != 0);
+	while ((SPI2->SR & BSY_FLAG) != 0);*/
+	transmitWord(0b00000100);
 
 	// Slave select disabled
-	GPIOA->ODR |= SS_PIN;
-	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
+	/*GPIOA->ODR |= SS_PIN;
+	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns*/
+	endSPIcommunication();
 }
 
 static unsigned int ReadStatusRegister()
@@ -224,11 +263,13 @@ inline static int transmitWord(unsigned int byte)
 	SPI2->DR = 0xFF & byte;
 	while (!(SPI2->SR & TXE_FLAG)) {}
 	while (!(SPI2->SR & RXNE_FLAG)) {}
+	volatile unsigned int x = SPI2->DR;
 }
 
 inline static void startSPIcommunication()
 {
 	SPI2->CR1 |= BIT6; // SPI enabled
+	while (!(SPI2->SR & TXE_FLAG)) {}
 	GPIOA->ODR &= ~SS_PIN;
 }
 
@@ -236,8 +277,9 @@ inline static void endSPIcommunication()
 {
 	while ((SPI2->SR & BSY_FLAG)) {}
 
-	SPI2->CR1 &= ~BIT6; // SPI disabled
 	GPIOA->ODR |= SS_PIN;
+
+	SPI2->CR1 &= ~BIT6; // SPI disabled
 
 	for (volatile int i = 0; i < EEPROM_DELAY_TICKS; i++); // at least 50 ns
 }

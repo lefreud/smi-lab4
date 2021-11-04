@@ -48,9 +48,14 @@ int main(void)
 {
   unsigned char buffer[10] = {0};
   initEEPROM();
-  LireMemoireEEPROM(0x0000, 4, buffer);
-  EcrireMemoireEEPROM(0, 0, 0);
-  LireMemoireEEPROM(0x0000, 4, buffer);
+
+  while (1) {
+
+	  EcrireMemoireEEPROM(0, 0, 0);
+	  LireMemoireEEPROM(0x0000, 4, buffer);
+	  //LireMemoireEEPROM(0x0000, 4, buffer);
+	  //for (volatile int i = 0; i < 1000; i++);
+  }
   int i = 0;
 
   /**
