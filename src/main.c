@@ -39,19 +39,14 @@ SOFTWARE.
 **
 **  Abstract: main program
 **
+**  This is a test program that validates
+**  the EEPROM is working properly over all its address
+**  range! Cool right? :D
+**
 **===========================================================================
 */
 int main(void)
 {
-
-  /*while (1) {
-
-	  LireMemoireEEPROM(0x0000, 4, buffer);
-	  EcrireMemoireEEPROM(0, 0, 0);
-	  //LireMemoireEEPROM(0x0000, 4, buffer);
-	  //for (volatile int i = 0; i < 1000; i++);
-  }*/
-
   // initialize test data
   int eeprom_validatation_result = 0; // 0: not validated, -1: invalid, 1: valid
 
@@ -61,7 +56,11 @@ int main(void)
   // write dummy data to write_buffer
   for (unsigned int i = 0; i < EEPROM_MAX_ADDRESS; i++) {
 	  // write address over 2 bytes
-	  write_buffer[i] = (i >> ((i % 2) * sizeof (unsigned char))) & 0xFF;
+	  if (i % 2 == 0) {
+		  write_buffer[i] = (unsigned char) (i / 2);
+	  } else {
+		  write_buffer[i] = (unsigned char) ((i / 2) >> 8);
+	  }
   }
 
   // init, write and read eeprom
@@ -80,6 +79,10 @@ int main(void)
   {
 	  eeprom_validatation_result = 1;
   }
+
+  // NOTE:
+  // ADD BREAKPOINT HERE IN DEBUG MODE TO CHECK THAT
+  // eeprom_validatation_result IS EQUAL TO 1.
 
   /* Infinite loop */
   int i = 0;

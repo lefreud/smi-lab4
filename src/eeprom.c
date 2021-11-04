@@ -79,7 +79,7 @@ void initEEPROM()
 char LireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, unsigned char *Destination)
 {
 	if (AdresseEEPROM >= EEPROM_MAX_ADDRESS) {
-		return -1;
+		return 1;
 	}
 
 	while (IsWriteInProgress());
@@ -87,9 +87,14 @@ char LireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, uns
 	for (unsigned int i = 0; i < NbreOctets; i++) {
 		startSPIcommunication();
 
+		// send command to read word
 		transmitWord(0b00000011);
+
+		// send address
 		transmitWord(((AdresseEEPROM + i) & 0xFF00) >> 8);
 		transmitWord((AdresseEEPROM + i) & 0xFF);
+
+		// read data
 		transmitWord(0xFF);
 		volatile unsigned int x = receiveWord();
 		Destination[i] = receiveWord();
@@ -98,21 +103,17 @@ char LireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, uns
 	}
 
 
-	return 0; // TODO: check for failures
+	return 0;
 }
 
 char EcrireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, unsigned char *Source)
 {
 	if (AdresseEEPROM >= EEPROM_MAX_ADDRESS) {
-		return -1;
+		return 1;
 	}
 
 	// TODO: use DMA for faster/less cumbersome data transfers?
 
-	/* unsigned char toWrite[] = {
-			0, 1, 2, 3
-	};
-	EcrirePageEEPROM(0x0000, 4, toWrite);*/
 	unsigned int maxAddressToWrite = AdresseEEPROM + NbreOctets;
 	unsigned int currentAddress = AdresseEEPROM;
 	unsigned int currentPage = AdresseEEPROM / EEPROM_PAGE_SIZE;
@@ -136,12 +137,8 @@ char EcrireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, u
 		currentPage++;
 		currentAddress = currentPage * EEPROM_PAGE_SIZE;
 	}
-/*
-	for (unsigned int currentAddress = AdresseEEPROM; currentAddress < AdresseEEPROM + NbreOctets; currentAddress++) {
-		EcrirePageEEPROM(currentAddress, 1, &Source[currentAddress - AdresseEEPROM]);
-	}*/
 
-	return 0; // TODO: check for failures
+	return 0;
 }
 
 /**
@@ -196,6 +193,8 @@ static void EcrirePageEEPROM(unsigned int AdresseEEPROM, unsigned int NbreOctets
 static unsigned int ReadStatusRegister()
 {
 	startSPIcommunication();
+
+	// read status register
 	transmitWord(0b00000101);
 	transmitWord(0xFF);
 
