@@ -32,10 +32,7 @@ SOFTWARE.
 #include "macros_utiles.h"
 #include "eeprom.h"
 
-/* Private macro */
-/* Private variables */
-/* Private function prototypes */
-/* Private functions */
+
 
 /**
 **===========================================================================
@@ -46,31 +43,46 @@ SOFTWARE.
 */
 int main(void)
 {
-  unsigned char buffer[10] = {0};
-  initEEPROM();
 
-  while (1) {
+  /*while (1) {
 
-	  EcrireMemoireEEPROM(0, 0, 0);
 	  LireMemoireEEPROM(0x0000, 4, buffer);
+	  EcrireMemoireEEPROM(0, 0, 0);
 	  //LireMemoireEEPROM(0x0000, 4, buffer);
 	  //for (volatile int i = 0; i < 1000; i++);
+  }*/
+
+  // initialize test data
+  int eeprom_validatation_result = 0; // 0: not validated, -1: invalid, 1: valid
+
+  unsigned char write_buffer[EEPROM_MAX_ADDRESS] = {0};
+  unsigned char read_buffer[EEPROM_MAX_ADDRESS] = {0};
+
+  // write dummy data to write_buffer
+  for (unsigned int i = 0; i < EEPROM_MAX_ADDRESS; i++) {
+	  // write address over 2 bytes
+	  write_buffer[i] = (i >> ((i % 2) * sizeof (unsigned char))) & 0xFF;
   }
-  int i = 0;
 
-  /**
-  *  IMPORTANT NOTE!
-  *  The symbol VECT_TAB_SRAM needs to be defined when building the project
-  *  if code has been located to RAM and interrupts are used. 
-  *  Otherwise the interrupt table located in flash will be used.
-  *  See also the <system_*.c> file and how the SystemInit() function updates 
-  *  SCB->VTOR register.  
-  *  E.g.  SCB->VTOR = 0x20000000;  
-  */
+  // init, write and read eeprom
+  initEEPROM();
+  EcrireMemoireEEPROM(0x0000, EEPROM_MAX_ADDRESS, write_buffer);
+  LireMemoireEEPROM(0x0000, EEPROM_MAX_ADDRESS, read_buffer);
 
-  /* TODO - Add your application code here */
+  // validate data
+  for (unsigned int i = 0; i < EEPROM_MAX_ADDRESS; i++) {
+	  if (read_buffer[i] != write_buffer[i]) {
+		  eeprom_validatation_result = -1;
+		  break;
+	  }
+  }
+  if (eeprom_validatation_result == 0)
+  {
+	  eeprom_validatation_result = 1;
+  }
 
   /* Infinite loop */
+  int i = 0;
   while (1)
   {
 	i++;
