@@ -15,10 +15,12 @@
 
 #define SPI_ALTERNATE_FUNCTION 0x5
 #define GPIO_ALTERNATE_FUNCTION 0b10
-#define EEPROM_DELAY_TICKS 1000 // at least 50 ns
+#define EEPROM_DELAY_TICKS 10 // at least 50 ns
 #define SS_PIN BIT1
 
 #define EEPROM_PAGE_SIZE 64
+
+// Private function declarations
 
 static void EcrirePageEEPROM(unsigned int AdresseEEPROM, unsigned int NbreOctets, unsigned char *Source);
 static unsigned int ReadStatusRegister();
@@ -27,6 +29,12 @@ static void startSPIcommunication();
 static void endSPIcommunication();
 static int transmitWord(unsigned int byte);
 static unsigned int receiveWord();
+
+// Private static variable definitions
+
+static int initialized = 0;
+
+// Function definitions
 
 void initEEPROM()
 {
@@ -45,17 +53,17 @@ void initEEPROM()
 
 	SPI2->CR2 |= BIT2; // SS output enabled
 	SPI2->CR1 |= BIT2 // Master mode
-	          | 0b111 << 3 // Baud rate control (f_PCLK/2) TODO: find optimal baud rate
+	          | 0b111 << 3 // Baud rate control (f_PCLK/256) TODO: find optimal baud rate
 	          ;
 
 
 	NVIC->ISER[1] |= BIT3; // SPI global interrupt (bit 35)
 
 	/*
-	 * Set PB12, PB13, PB14, PB15 to alternate function
+	 * Set PB13, PB14, PB15 to alternate function
 	 */
 
-	GPIOB->OSPEEDR |= BIT25 | BIT27 | BIT29 | BIT31;
+	GPIOB->OSPEEDR |= BIT27 | BIT29 | BIT31;
 
 	// Mode alternate function
 	GPIOB->MODER |= GPIO_ALTERNATE_FUNCTION << 24 |
@@ -74,10 +82,15 @@ void initEEPROM()
 
 	// Slave select disabled
 	GPIOA->ODR |= SS_PIN;
+
+	initialized = 1;
 }
 
 char LireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, unsigned char *Destination)
 {
+	if (!initialized) {
+		return 1;
+	}
 	if (AdresseEEPROM >= EEPROM_MAX_ADDRESS) {
 		return 1;
 	}
@@ -108,6 +121,9 @@ char LireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, uns
 
 char EcrireMemoireEEPROM (unsigned int AdresseEEPROM, unsigned int NbreOctets, unsigned char *Source)
 {
+	if (!initialized) {
+		return 1;
+	}
 	if (AdresseEEPROM >= EEPROM_MAX_ADDRESS) {
 		return 1;
 	}
